@@ -111,7 +111,7 @@ case $action in
         fi
         ;;
     list)
-        sqlite3 -header -column $dbpath/$dbfile "select user,ip,pubkey from users;"
+        sqlite3 -header -column $dbpath/$dbfile 'select user,ip,pubkey from users where user NOT LIKE "Server";'
         ;;
     *)
         echo "init      - create and populate DB file and create server config"
