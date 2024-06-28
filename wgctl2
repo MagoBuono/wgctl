@@ -86,9 +86,9 @@ case $action in
         usrpubkey=$(echo -n $usrprivkey | wg pubkey)
         user_insert 
         wg set wg0 peer $usrpubkey allowed-ips $usrip/32
-        wg-quick save wg0
+        wg-quick save wg0 &>/dev/null
         if command -v qrencode &>/dev/null; then
-        	genconf | tee >(qrencode -t ansiutf8)
+        	genconf | tee /dev/tty | qrencode -t ansiutf8
         else
         	genconf
         	# genconf $usrprivkey $usrip > conf/$username.conf
