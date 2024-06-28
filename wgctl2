@@ -5,7 +5,7 @@ shift
 iswg=$(command -v wg &>/dev/null; echo $?)
 iswgquick=$(command -v wg-quick &>/dev/null; echo $?)
 issqlite=$(command -v sqlite3 &>/dev/null; echo $?)
-[ $iswg -ne 0 || $iswgquick -ne 0 || $issqlite -ne 0 ] && echo "Something is missing. Check that everything is installed: wireguard, wireguard-tools, sqlite3. Optional: qrencode" && exit
+[[ $iswg -ne 0 || $iswgquick -ne 0 || $issqlite -ne 0 ]] && echo "Something is missing. Check that everything is installed: wireguard, wireguard-tools, sqlite3. Optional: qrencode" && exit
 
 srvport="51820"
 dbpath="/usr/share/wgctl"
