@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+[ -z $1 ] && action="help" || action=$1
+shift
+
+# Detect default interface. Comment and write fixed one if needed.
+srvinterface=$(ip -o -4 route show to default | awk '{print $5}')
+# Detect ip on default interface. Comment and write fixed one if needed.
+srvip=$(ip -o -4 address show dev $srvinterface | awk '{print $4}' | cut -d"/" -f 1 | head -n1)
+srvport="51820"
+dbpath="/usr/share/wgctl"
+dbfile="wgctl.db" # SQlite3 DB filename
+srvpubkey="4kiwTNGjnobVS2sZukZwNsW/oPibFZOlSvAjtbFW6gw=" # Your server's public key
+
+insert() {
+	sqlite3 $dbpath/$dbfile <<-EOF
+		insert into users(user,pubkey,ip) values ("$1","$2","$3");
+	EOF
+}
+
+findpub() {
+	sqlite3 $dbpath/$dbfile <<-EOF
+		select pubkey from users where user="$1";
+	EOF
+}
+
+delete() {
+	sqlite3 $dbpath/$dbfile <<-EOF
+		delete from users where user="$1";
+	EOF
+}
+
+genconf() {
+	cat <<-EOF
+		[Interface]
+		PrivateKey=$1
+		Address=$2
+		DNS=8.8.8.8
+
+		[Peer]
+		PublicKey=${srvpubkey}
+		Endpoint=${srvip}
+		AllowedIPs=0.0.0.0/0
+		PersistentKeepalive=15
+	EOF
+}
+
+#[ ! -f $dbpath/$dbfile ] && echo "No database found. Run init command" && exit
+
+case $action in
+    create)
+        [ -z $1 ] && echo -e "You forgot the user's name\nUsage:\twgctl create username ip_address" && exit
+        [ -z $2 ] && echo -e "You forgot IP address\nUsage:\twgctl create username ip_address" && exit
+        username=$1
+        ipaddr=$2
+        privkey=$(wg genkey)
+        pubkey=$(echo -n $privkey | wg pubkey)
+
+        insert $username $pubkey $ipaddr
+        wg set wg0 peer $pubkey allowed-ips $ipaddr/32
+        wg-quick save wg0
+        # genconf $privkey $ipaddr > conf/$username.conf
+        # genconf $privkey $ipaddr | qrencode -t ansiutf8
+        genconf $privkey $ipaddr
+
+        ;;
+    remove)
+        [ -z $1 ] && echo -e "You forgot the user's name\nUsage:\twgctl remove username" && exit
+        username=$1
+        pubkey=$(findpub $username)
+        [ "$pubkey" == "" ] && echo Pubkey not found && exit
+        wg set wg0 peer $pubkey remove
+        wg-quick save wg0
+        delete $username
+
+        ;;
+    init)
+        [ ! -d $dbpath ] && mkdir -p $dbpath
+        if [ ! -f $dbpath/$dbfile ]; then
+            sqlite3 $dbpath/$dbfile "CREATE TABLE IF NOT EXISTS "users" ( [id] INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, [user] TEXT NOT NULL, [pubkey] TEXT NOT NULL UNIQUE, [ip] TEXT NOT NULL UNIQUE );"
+            sqlite3 $dbpath/$dbfile "CREATE TABLE IF NOT EXISTS "server" ( [id] INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, [ip] TEXT NOT NULL, [privkey] TEXT NOT NULL UNIQUE, [pubkey] TEXT NOT NULL UNIQUE);"
+            srvprivkey=$(wg genkey)
+            srvpubkey=$(echo -n $srvprivkey | wg pubkey)
+            sqlite3 $dbpath/$dbfile <<-EOF
+							insert into server(ip,privkey,pubkey) values ("$srvip","$srvprivkey","$srvpubkey");
+						EOF
+        fi
+
+        ;;
+    list)
+        sqlite3 -header -column $dbpath/$dbfile "select user,ip,pubkey from users;"
+        ;;
+    *)
+        echo "init      - create dbfile and table for users"
+        echo "create    - create user. Usage: wgctl create username vpn_ip_address"
+        echo "remove    - remove user. Usage: wgctl remove username"
+        echo "list      - list known users in database"
+        ;;
+esac

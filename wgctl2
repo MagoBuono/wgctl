@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+[ -z $1 ] && action="help" || action=$1
+shift
+
+iswg=$(command -v wg &>/dev/null)
+iswgquick=$(command -v wg-quick &>/dev/null)
+issqlite=$(command -v sqlite3 &>/dev/null)
+[ "$iswg" -ne 0 || "$iswgquick" -ne 0 || "$issqlite" -ne 0 ] && echo "Something is missing. Check that everything is installed: wireguard, wireguard-tools, sqlite3. Optional: qrencode"
+
+srvport="51820"
+dbpath="/usr/share/wgctl"
+dbfile="wgctl.db" # SQlite3 DB filename
+
+initdb() {
+	sqlite3 $dbpath/$dbfile "CREATE TABLE IF NOT EXISTS "users" ( [id] TEXT NOT NULL UNIQUE, [user] TEXT NOT NULL, [pubkey] TEXT NOT NULL, [ip] TEXT NOT NULL, [extip] TEXT );"
+#	sqlite3 $dbpath/$dbfile "CREATE TABLE IF NOT EXISTS "server" ( [ip] TEXT NOT NULL, [privkey] TEXT NOT NULL UNIQUE, [pubkey] TEXT NOT NULL UNIQUE);"
+
+  # Which interface is used for default route
+	srvinterface=$(ip -o -4 route show to default | awk '{print $5}')
+	# Looking for IP of that interface
+	srvip=$(ip -o -4 address show dev $srvinterface | awk '{print $4}' | cut -d"/" -f 1 | head -n1)
+  
+  srvprivkey=$(wg genkey)
+  srvpubkey=$(echo -n $srvprivkey | wg pubkey)
+  sqlite3 $dbpath/$dbfile <<-EOF
+		insert into user(id,user,pubkey,ip,extip) values ("1","Server","$srvpubkey","10.12.13.1","$srvip");
+	EOF
+}
+
+create_srv {
+	cat <<-EOF
+		[Interface]
+		Address = 10.12.13.1/24
+		SaveConfig = true
+		PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o $srvinterface -s 10.12.13.0/24 -j SNAT --to-source $srvip
+		PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o $srvinterface -s 10.12.13.0/24 -j SNAT --to-source $srvip
+		ListenPort = $srvport
+		PrivateKey = $srvprivkey
+	EOF
+}
+
+user_insert() {
+	usrnewid=$(diff --side-by-side --suppress-common-lines <(seq 2 254) <(sqlite3 $dbpath/$dbfile "select id from users;" | sort) | awk '{print $1}' | head -n1)
+	usrip="10.12.13.$usrnewid"
+	sqlite3 $dbpath/$dbfile <<-EOF
+		insert into users(id,user,pubkey,ip) values ("$usrnewid","$username","$usrpubkey","$usrip");
+	EOF
+}
+
+user_findpub() {
+	sqlite3 $dbpath/$dbfile <<-EOF
+		select pubkey from users where user="$username";
+	EOF
+}
+
+user_delete() {
+	sqlite3 $dbpath/$dbfile <<-EOF
+		delete from users where user="$username";
+	EOF
+}
+
+genconf() {
+	srvpubkey=$(sqlite $dbpath/$dbfile "select pubkey from users where id=1;")
+	srvip=$(sqlite $dbpath/$dbfile "select extip from users where id=1;")
+	cat <<-EOF
+		[Interface]
+		PrivateKey=$usrprivkey
+		Address=$usrip
+		DNS=8.8.8.8
+
+		[Peer]
+		PublicKey=${srvpubkey}
+		Endpoint=${srvip}:${srvport}
+		AllowedIPs=0.0.0.0/0
+		PersistentKeepalive=15
+	EOF
+}
+
+#[ ! -f $dbpath/$dbfile ] && echo "No database found. Run init command" && exit
+
+case $action in
+    create)
+        [ -z $1 ] && echo -e "You forgot the user's name\nUsage:\twgctl create username vpn_ip_address" && exit
+        username=$1
+        usrprivkey=$(wg genkey)
+        usrpubkey=$(echo -n $usrprivkey | wg pubkey)
+        user_insert 
+        wg set wg0 peer $usrpubkey allowed-ips $usrip/32
+        wg-quick save wg0
+        # genconf $privkey $ipaddr > conf/$username.conf
+        # genconf $privkey $ipaddr | tee >(qrencode -t ansiutf8)
+        genconf
+        ;;
+    delete)
+        [ -z $1 ] && echo -e "You forgot the user's name\nUsage:\twgctl remove username" && exit
+        username=$1
+        usrpubkey=$(user_findpub)
+        [ "$usrpubkey" == "" ] && echo User not found && exit
+        wg set wg0 peer $usrpubkey remove
+        wg-quick save wg0
+        user_delete
+        ;;
+    init)
+        [ ! -d $dbpath ] && mkdir -p $dbpath && chmod 700 $dbpath
+        if [ ! -f $dbpath/$dbfile ]; then
+        	initdb
+        	create_srv
+        fi
+        ;;
+    list)
+        sqlite3 -header -column $dbpath/$dbfile "select user,ip,pubkey from users;"
+        ;;
+    *)
+        echo "init      - create and populate DB file and create server config"
+        echo "create    - create user. Usage: wgctl create username vpn_ip_address"
+        echo "delete    - remove user. Usage: wgctl delete username"
+        echo "list      - list known users in database"
+        ;;
+esac
