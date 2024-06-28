@@ -27,7 +27,7 @@ initdb() {
 	EOF
 }
 
-create_srv {
+create_srv() {
 	cat <<-EOF
 		[Interface]
 		Address = 10.12.13.1/24
@@ -36,7 +36,7 @@ create_srv {
 		PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o $srvinterface -s 10.12.13.0/24 -j SNAT --to-source $srvip
 		ListenPort = $srvport
 		PrivateKey = $srvprivkey
-	EOF
+		EOF
 }
 
 user_insert() {
