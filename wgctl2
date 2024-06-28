@@ -87,9 +87,12 @@ case $action in
         user_insert 
         wg set wg0 peer $usrpubkey allowed-ips $usrip/32
         wg-quick save wg0
-        # genconf $privkey $ipaddr > conf/$username.conf
-        # genconf $privkey $ipaddr | tee >(qrencode -t ansiutf8)
-        genconf
+        if command -v qrencode &>/dev/null; then
+        	genconf | tee >(qrencode -t ansiutf8)
+        else
+        	genconf
+        	# genconf $usrprivkey $usrip > conf/$username.conf
+        fi
         ;;
     delete)
         [ -z $1 ] && echo -e "You forgot the user's name\nUsage:\twgctl remove username" && exit
