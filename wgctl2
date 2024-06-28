@@ -23,7 +23,7 @@ initdb() {
   srvprivkey=$(wg genkey)
   srvpubkey=$(echo -n $srvprivkey | wg pubkey)
   sqlite3 $dbpath/$dbfile <<-EOF
-		insert into users(id,user,pubkey,ip,extip) values ("1","Server","$srvpubkey","10.12.13.1","$srvip");
+		insert into users(id,user,pubkey,ip,extip) values ("1","Server_$srvinterface","$srvpubkey","10.12.13.1","$srvip");
 	EOF
 }
 
@@ -111,7 +111,7 @@ case $action in
         fi
         ;;
     list)
-        sqlite3 -header -column $dbpath/$dbfile 'select user,ip,pubkey from users where user NOT LIKE "Server";'
+        sqlite3 -header -column $dbpath/$dbfile 'select user,ip,pubkey from users where user NOT LIKE "Server%";'
         ;;
     *)
         echo "init      - create and populate DB file and create server config"
