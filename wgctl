@@ -2,97 +2,119 @@
 [ -z $1 ] && action="help" || action=$1
 shift
 
-# Detect default interface. Comment and write fixed one if needed.
-srvinterface=$(ip -o -4 route show to default | awk '{print $5}')
-# Detect ip on default interface. Comment and write fixed one if needed.
-srvip=$(ip -o -4 address show dev $srvinterface | awk '{print $4}' | cut -d"/" -f 1 | head -n1)
+iswg=$(command -v wg &>/dev/null; echo $?)
+iswgquick=$(command -v wg-quick &>/dev/null; echo $?)
+issqlite=$(command -v sqlite3 &>/dev/null; echo $?)
+[[ $iswg -ne 0 || $iswgquick -ne 0 || $issqlite -ne 0 ]] && echo "Something is missing. Check that everything is installed: wireguard, wireguard-tools, sqlite3. Optional: qrencode" && exit
+
 srvport="51820"
 dbpath="/usr/share/wgctl"
 dbfile="wgctl.db" # SQlite3 DB filename
-srvpubkey="4kiwTNGjnobVS2sZukZwNsW/oPibFZOlSvAjtbFW6gw=" # Your server's public key
 
-insert() {
+initdb() {
+	sqlite3 $dbpath/$dbfile "CREATE TABLE IF NOT EXISTS "users" ( [id] TEXT NOT NULL UNIQUE, [user] TEXT NOT NULL, [pubkey] TEXT NOT NULL, [ip] TEXT NOT NULL, [extip] TEXT );"
+	# sqlite3 $dbpath/$dbfile "CREATE TABLE IF NOT EXISTS "server" ( [ip] TEXT NOT NULL, [privkey] TEXT NOT NULL UNIQUE, [pubkey] TEXT NOT NULL UNIQUE);"
+
+	# Which interface is used for default route
+	srvinterface=$(ip -o -4 route show to default | awk '{print $5}')
+	# Looking for IP of that interface
+	srvip=$(ip -o -4 address show dev $srvinterface | awk '{print $4}' | cut -d"/" -f 1 | head -n1)
+  
+	srvprivkey=$(wg genkey)
+	srvpubkey=$(echo -n $srvprivkey | wg pubkey)
 	sqlite3 $dbpath/$dbfile <<-EOF
-		insert into users(user,pubkey,ip) values ("$1","$2","$3");
+		insert into users(id,user,pubkey,ip,extip) values ("1","Server_$srvinterface","$srvpubkey","10.12.13.1","$srvip");
 	EOF
 }
 
-findpub() {
+create_srv() {
+	cat <<-EOF
+		[Interface]
+		Address = 10.12.13.1/24
+		SaveConfig = true
+		PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o $srvinterface -s 10.12.13.0/24 -j SNAT --to-source $srvip
+		PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o $srvinterface -s 10.12.13.0/24 -j SNAT --to-source $srvip
+		ListenPort = $srvport
+		PrivateKey = $srvprivkey
+		EOF
+}
+
+user_insert() {
+	usrnewid=$(diff --side-by-side --suppress-common-lines <(seq 1 254) <(sqlite3 $dbpath/$dbfile "select id from users;" | sort) | awk '{print $1}' | head -n1)
+	usrip="10.12.13.$usrnewid"
 	sqlite3 $dbpath/$dbfile <<-EOF
-		select pubkey from users where user="$1";
+		insert into users(id,user,pubkey,ip) values ("$usrnewid","$username","$usrpubkey","$usrip");
 	EOF
 }
 
-delete() {
+user_findpub() {
 	sqlite3 $dbpath/$dbfile <<-EOF
-		delete from users where user="$1";
+		select pubkey from users where user="$username";
+	EOF
+}
+
+user_delete() {
+	sqlite3 $dbpath/$dbfile <<-EOF
+		delete from users where user="$username";
 	EOF
 }
 
 genconf() {
+	srvpubkey=$(sqlite3 $dbpath/$dbfile "select pubkey from users where id=1;")
+	srvip=$(sqlite3 $dbpath/$dbfile "select extip from users where id=1;")
 	cat <<-EOF
 		[Interface]
-		PrivateKey=$1
-		Address=$2
+		PrivateKey=$usrprivkey
+		Address=$usrip
 		DNS=8.8.8.8
 
 		[Peer]
 		PublicKey=${srvpubkey}
-		Endpoint=${srvip}
+		Endpoint=${srvip}:${srvport}
 		AllowedIPs=0.0.0.0/0
 		PersistentKeepalive=15
 	EOF
 }
 
-#[ ! -f $dbpath/$dbfile ] && echo "No database found. Run init command" && exit
-
 case $action in
     create)
-        [ -z $1 ] && echo -e "You forgot the user's name\nUsage:\twgctl create username ip_address" && exit
-        [ -z $2 ] && echo -e "You forgot IP address\nUsage:\twgctl create username ip_address" && exit
+        [ -z $1 ] && echo -e "You forgot the user's name\nUsage:\twgctl create username vpn_ip_address" && exit
         username=$1
-        ipaddr=$2
-        privkey=$(wg genkey)
-        pubkey=$(echo -n $privkey | wg pubkey)
-
-        insert $username $pubkey $ipaddr
-        wg set wg0 peer $pubkey allowed-ips $ipaddr/32
-        wg-quick save wg0
-        # genconf $privkey $ipaddr > conf/$username.conf
-        # genconf $privkey $ipaddr | qrencode -t ansiutf8
-        genconf $privkey $ipaddr
-
+        usrprivkey=$(wg genkey)
+        usrpubkey=$(echo -n $usrprivkey | wg pubkey)
+        user_insert 
+        wg set wg0 peer $usrpubkey allowed-ips $usrip/32
+        wg-quick save wg0 &>/dev/null
+        if command -v qrencode &>/dev/null; then
+        	genconf | tee /dev/tty | qrencode -t ansiutf8
+        else
+        	genconf
+        	# genconf $usrprivkey $usrip > conf/$username.conf
+        fi
         ;;
-    remove)
+    delete)
         [ -z $1 ] && echo -e "You forgot the user's name\nUsage:\twgctl remove username" && exit
         username=$1
-        pubkey=$(findpub $username)
-        [ "$pubkey" == "" ] && echo Pubkey not found && exit
-        wg set wg0 peer $pubkey remove
+        usrpubkey=$(user_findpub)
+        [ "$usrpubkey" == "" ] && echo User not found && exit
+        wg set wg0 peer $usrpubkey remove
         wg-quick save wg0
-        delete $username
-
+        user_delete
         ;;
     init)
-        [ ! -d $dbpath ] && mkdir -p $dbpath
+        [ ! -d $dbpath ] && mkdir -p $dbpath && chmod 700 $dbpath
         if [ ! -f $dbpath/$dbfile ]; then
-            sqlite3 $dbpath/$dbfile "CREATE TABLE IF NOT EXISTS "users" ( [id] INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, [user] TEXT NOT NULL, [pubkey] TEXT NOT NULL UNIQUE, [ip] TEXT NOT NULL UNIQUE );"
-            sqlite3 $dbpath/$dbfile "CREATE TABLE IF NOT EXISTS "server" ( [id] INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, [ip] TEXT NOT NULL, [privkey] TEXT NOT NULL UNIQUE, [pubkey] TEXT NOT NULL UNIQUE);"
-            srvprivkey=$(wg genkey)
-            srvpubkey=$(echo -n $srvprivkey | wg pubkey)
-            sqlite3 $dbpath/$dbfile <<-EOF
-							insert into server(ip,privkey,pubkey) values ("$srvip","$srvprivkey","$srvpubkey");
-						EOF
+        	initdb
+        	create_srv > /etc/wireguard/wg0.conf
         fi
-
         ;;
     list)
-        sqlite3 -header -column $dbpath/$dbfile "select user,ip,pubkey from users;"
+        sqlite3 -header -column $dbpath/$dbfile 'select user,ip,pubkey from users where user NOT LIKE "Server%";'
         ;;
     *)
-        echo "init      - create dbfile and table for users"
+        echo "init      - create and populate DB file and create server config"
         echo "create    - create user. Usage: wgctl create username vpn_ip_address"
-        echo "remove    - remove user. Usage: wgctl remove username"
+        echo "delete    - remove user. Usage: wgctl delete username"
         echo "list      - list known users in database"
         ;;
 esac
