@@ -23,7 +23,7 @@ initdb() {
   srvprivkey=$(wg genkey)
   srvpubkey=$(echo -n $srvprivkey | wg pubkey)
   sqlite3 $dbpath/$dbfile <<-EOF
-		insert into user(id,user,pubkey,ip,extip) values ("1","Server","$srvpubkey","10.12.13.1","$srvip");
+		insert into users(id,user,pubkey,ip,extip) values ("1","Server","$srvpubkey","10.12.13.1","$srvip");
 	EOF
 }
 
@@ -104,7 +104,7 @@ case $action in
         [ ! -d $dbpath ] && mkdir -p $dbpath && chmod 700 $dbpath
         if [ ! -f $dbpath/$dbfile ]; then
         	initdb
-        	create_srv
+        	create_srv > /etc/wireguard/wg0.conf
         fi
         ;;
     list)
