@@ -40,7 +40,7 @@ create_srv() {
 }
 
 user_insert() {
-	usrnewid=$(diff --side-by-side --suppress-common-lines <(seq 2 254) <(sqlite3 $dbpath/$dbfile "select id from users;" | sort) | awk '{print $1}' | head -n1)
+	usrnewid=$(diff --side-by-side --suppress-common-lines <(seq 1 254) <(sqlite3 $dbpath/$dbfile "select id from users;" | sort) | awk '{print $1}' | head -n1)
 	usrip="10.12.13.$usrnewid"
 	sqlite3 $dbpath/$dbfile <<-EOF
 		insert into users(id,user,pubkey,ip) values ("$usrnewid","$username","$usrpubkey","$usrip");
