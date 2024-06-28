@@ -13,16 +13,16 @@ dbfile="wgctl.db" # SQlite3 DB filename
 
 initdb() {
 	sqlite3 $dbpath/$dbfile "CREATE TABLE IF NOT EXISTS "users" ( [id] TEXT NOT NULL UNIQUE, [user] TEXT NOT NULL, [pubkey] TEXT NOT NULL, [ip] TEXT NOT NULL, [extip] TEXT );"
-#	sqlite3 $dbpath/$dbfile "CREATE TABLE IF NOT EXISTS "server" ( [ip] TEXT NOT NULL, [privkey] TEXT NOT NULL UNIQUE, [pubkey] TEXT NOT NULL UNIQUE);"
+	# sqlite3 $dbpath/$dbfile "CREATE TABLE IF NOT EXISTS "server" ( [ip] TEXT NOT NULL, [privkey] TEXT NOT NULL UNIQUE, [pubkey] TEXT NOT NULL UNIQUE);"
 
-  # Which interface is used for default route
+	# Which interface is used for default route
 	srvinterface=$(ip -o -4 route show to default | awk '{print $5}')
 	# Looking for IP of that interface
 	srvip=$(ip -o -4 address show dev $srvinterface | awk '{print $4}' | cut -d"/" -f 1 | head -n1)
   
-  srvprivkey=$(wg genkey)
-  srvpubkey=$(echo -n $srvprivkey | wg pubkey)
-  sqlite3 $dbpath/$dbfile <<-EOF
+	srvprivkey=$(wg genkey)
+	srvpubkey=$(echo -n $srvprivkey | wg pubkey)
+	sqlite3 $dbpath/$dbfile <<-EOF
 		insert into users(id,user,pubkey,ip,extip) values ("1","Server_$srvinterface","$srvpubkey","10.12.13.1","$srvip");
 	EOF
 }
@@ -75,8 +75,6 @@ genconf() {
 		PersistentKeepalive=15
 	EOF
 }
-
-#[ ! -f $dbpath/$dbfile ] && echo "No database found. Run init command" && exit
 
 case $action in
     create)
