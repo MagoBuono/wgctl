@@ -1,7 +1,0 @@
-[Interface]
-Address = 10.12.0.1/24
-SaveConfig = true
-PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o ens3 -s 10.12.0.0/24 -j SNAT --to-source 193.188.23.90
-PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o ens3 -s 10.12.0.0/24 -j SNAT --to-source 193.188.23.90
-ListenPort = 443
-PrivateKey = 6Ma/bo0SZt+f3VufM3IvGDGQfY1ZZG1neDneTg89B1A=
