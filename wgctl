@@ -103,8 +103,8 @@ case $action in
         [ ! -d $dbpath ] && mkdir -p $dbpath && chmod 700 $dbpath
         if [ ! -f $dbpath/$dbfile ]; then
         	initdb
-        	create_srv > /etc/wireguard/wg12.conf
-        	wg-quick up wg12
+        	create_srv > /etc/wireguard/wg0.conf
+        	wg-quick up wg0
         fi
         ;;
     list)
