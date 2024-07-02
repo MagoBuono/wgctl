@@ -13,7 +13,6 @@ dbfile="wgctl.db" # SQlite3 DB filename
 
 initdb() {
 	sqlite3 $dbpath/$dbfile "CREATE TABLE IF NOT EXISTS "users" ( [id] TEXT NOT NULL UNIQUE, [user] TEXT NOT NULL, [pubkey] TEXT NOT NULL, [ip] TEXT NOT NULL, [extip] TEXT );"
-	# sqlite3 $dbpath/$dbfile "CREATE TABLE IF NOT EXISTS "server" ( [ip] TEXT NOT NULL, [privkey] TEXT NOT NULL UNIQUE, [pubkey] TEXT NOT NULL UNIQUE);"
 
 	# Which interface is used for default route
 	srvinterface=$(ip -o -4 route show to default | awk '{print $5}')
@@ -78,7 +77,7 @@ genconf() {
 
 case $action in
     create)
-        [ -z $1 ] && echo -e "You forgot the user's name\nUsage:\twgctl create username vpn_ip_address" && exit
+        [ -z $1 ] && echo -e "You forgot the user's name\nUsage:\twgctl create username" && exit
         username=$1
         usrprivkey=$(wg genkey)
         usrpubkey=$(echo -n $usrprivkey | wg pubkey)
@@ -89,11 +88,10 @@ case $action in
         	genconf | tee /dev/tty | qrencode -t ansiutf8
         else
         	genconf
-        	# genconf $usrprivkey $usrip > conf/$username.conf
         fi
         ;;
     delete)
-        [ -z $1 ] && echo -e "You forgot the user's name\nUsage:\twgctl remove username" && exit
+        [ -z $1 ] && echo -e "You forgot the user's name\nUsage:\twgctl delete username" && exit
         username=$1
         usrpubkey=$(user_findpub)
         [ "$usrpubkey" == "" ] && echo User not found && exit
@@ -105,7 +103,8 @@ case $action in
         [ ! -d $dbpath ] && mkdir -p $dbpath && chmod 700 $dbpath
         if [ ! -f $dbpath/$dbfile ]; then
         	initdb
-        	create_srv > /etc/wireguard/wg0.conf
+        	create_srv > /etc/wireguard/wg12.conf
+        	wg-quick up wg12
         fi
         ;;
     list)
@@ -113,7 +112,7 @@ case $action in
         ;;
     *)
         echo "init      - create and populate DB file and create server config"
-        echo "create    - create user. Usage: wgctl create username vpn_ip_address"
+        echo "create    - create user. Usage: wgctl create username"
         echo "delete    - remove user. Usage: wgctl delete username"
         echo "list      - list known users in database"
         ;;
