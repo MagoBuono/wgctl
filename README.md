@@ -3,9 +3,10 @@ Also it depends on iptables and apt, so Debian/Ubuntu is needed (or close deriva
 If you want to edit script use tabs for indentation, not spaces. Otherwise it'd break `cat <<-EOF`. Or you need to rewrite those parts to avoid leading spaces.
 
 ```
-apt update && apt install iptables wireguard wireguard-tool sqlite3 qrencode
+apt update && apt install iptables wireguard wireguard-tool sqlite3
 wget https://raw.githubusercontent.com/MagoBuono/wgctl/main/wgctl -O /usr/local/bin/wgctl
 chmod +x /usr/local/bin/wgctl
 wgctl init
 wgctl create
 ```
+If you have qrencode installed script will also generate QR alongside with client's config on screen.
