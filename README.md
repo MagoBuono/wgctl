@@ -7,6 +7,6 @@ apt update && apt install iptables wireguard wireguard-tools sqlite3
 wget https://raw.githubusercontent.com/MagoBuono/wgctl/main/wgctl -O /usr/local/bin/wgctl
 chmod +x /usr/local/bin/wgctl
 wgctl init
-wgctl create
+wgctl create user1
 ```
 If you have qrencode installed script will also generate QR alongside with client's config on screen.
