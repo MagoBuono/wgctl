@@ -110,10 +110,30 @@ case $action in
     list)
         sqlite3 -header -column $dbpath/$dbfile -cmd ".width 25 15 0" 'select user,ip,pubkey from users where user NOT LIKE "Server%";'
         ;;
+	show)
+		declare -A user_map
+		while IFS="|" read -r user pubkey; do
+			user_map["$pubkey"]="$user"
+		done < <(sqlite3 -separator "|" "$dbpath/$dbfile" 'select user,pubkey from users where user NOT LIKE "Server%";')
+
+		wg show | while IFS= read -r line; do
+			if [[ "$line" =~ ^peer:\ ([A-Za-z0-9+/=]+)$ ]]; then
+				pubkey="${BASH_REMATCH[1]}"
+				if [[ -n "${user_map[$pubkey]}" ]]; then
+					echo "peer: ${user_map[$pubkey]}"
+				else
+					echo "$line"
+				fi
+			else
+				echo "$line"
+			fi
+		done
+		;;
     *)
         echo "init      - create and populate DB file and create server config"
         echo "create    - create user. Usage: wgctl create username"
         echo "delete    - remove user. Usage: wgctl delete username"
         echo "list      - list known users in database"
+        echo "show      - show current interface config and connections"
         ;;
 esac
