@@ -5,7 +5,7 @@ shift
 iswg=$(command -v wg &>/dev/null; echo $?)
 iswgquick=$(command -v wg-quick &>/dev/null; echo $?)
 issqlite=$(command -v sqlite3 &>/dev/null; echo $?)
-[[ $iswg -ne 0 || $iswgquick -ne 0 || $issqlite -ne 0 ]] && echo "Something is missing. Check that everything is installed: wireguard, wireguard-tools, sqlite3. Optional: qrencode" && exit
+[[ $iswg -ne 0 || $iswgquick -ne 0 || $issqlite -ne 0 ]] && echo "Something is missing. Check that everything is installed: wireguard, wireguard-tools, sqlite3." && exit
 
 srvport="51820"
 dbpath="/usr/share/wgctl"
@@ -76,40 +76,36 @@ genconf() {
 }
 
 case $action in
-    create)
-        [ -z $1 ] && echo -e "You forgot the user's name\nUsage:\twgctl create username" && exit
-        username=$1
-        usrprivkey=$(wg genkey)
-        usrpubkey=$(echo -n $usrprivkey | wg pubkey)
-        user_insert 
-        wg set wg0 peer $usrpubkey allowed-ips $usrip/32
-        wg-quick save wg0 &>/dev/null
-        if command -v qrencode &>/dev/null; then
-        	genconf | tee /dev/tty | qrencode -t ansiutf8
-        else
-        	genconf
-        fi
-        ;;
-    delete)
-        [ -z $1 ] && echo -e "You forgot the user's name\nUsage:\twgctl delete username" && exit
-        username=$1
-        usrpubkey=$(user_findpub)
-        [ "$usrpubkey" == "" ] && echo User not found && exit
-        wg set wg0 peer $usrpubkey remove
-        wg-quick save wg0
-        user_delete
-        ;;
-    init)
-        [ ! -d $dbpath ] && mkdir -p $dbpath && chmod 700 $dbpath
-        if [ ! -f $dbpath/$dbfile ]; then
-        	initdb
-        	create_srv > /etc/wireguard/wg0.conf
-        	wg-quick up wg0
-        fi
-        ;;
-    list)
-        sqlite3 -header -column $dbpath/$dbfile -cmd ".width 25 15 0" 'select user,ip,pubkey from users where user NOT LIKE "Server%";'
-        ;;
+	create)
+		[ -z $1 ] && echo -e "You forgot the user's name\nUsage:\twgctl create username" && exit
+		username=$1
+		usrprivkey=$(wg genkey)
+		usrpubkey=$(echo -n $usrprivkey | wg pubkey)
+		user_insert 
+		wg set wg0 peer $usrpubkey allowed-ips $usrip/32
+		wg-quick save wg0 &>/dev/null
+		genconf
+		;;
+	delete)
+		[ -z $1 ] && echo -e "You forgot the user's name\nUsage:\twgctl delete username" && exit
+		username=$1
+		usrpubkey=$(user_findpub)
+		[ "$usrpubkey" == "" ] && echo User not found && exit
+		wg set wg0 peer $usrpubkey remove
+		wg-quick save wg0
+		user_delete
+		;;
+	init)
+		[ ! -d $dbpath ] && mkdir -p $dbpath && chmod 700 $dbpath
+		if [ ! -f $dbpath/$dbfile ]; then
+			initdb
+			create_srv > /etc/wireguard/wg0.conf
+			wg-quick up wg0
+		fi
+		;;
+	list)
+		sqlite3 -header -column $dbpath/$dbfile -cmd ".width 25 15 0" 'select user,ip,pubkey from users where user NOT LIKE "Server%";'
+		;;
 	show)
 		declare -A user_map
 		while IFS="|" read -r user pubkey; do
@@ -129,11 +125,11 @@ case $action in
 			fi
 		done
 		;;
-    *)
-        echo "init      - create and populate DB file and create server config"
-        echo "create    - create user. Usage: wgctl create username"
-        echo "delete    - remove user. Usage: wgctl delete username"
-        echo "list      - list known users in database"
-        echo "show      - show current interface config and connections"
-        ;;
+	*)
+		echo "init      - create and populate DB file and create server config"
+		echo "create    - create user. Usage: wgctl create username"
+		echo "delete    - remove user. Usage: wgctl delete username"
+		echo "list      - list known users in database"
+		echo "show      - show current interface config and connections"
+		;;
 esac
